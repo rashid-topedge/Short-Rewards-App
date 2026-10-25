@@ -40,6 +40,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -68,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.dramflix.android.data.model.EpisodeItem
 import com.dramflix.android.ui.components.CoinTopPill
+import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.RewardAdDialog
 import com.dramflix.android.ui.components.RewardsCenterDialog
 import com.dramflix.android.ui.theme.BrandGradient
@@ -95,6 +97,7 @@ fun DetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user by viewModel.userProfile.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isUserSyncing.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val drama = state.drama
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -132,7 +135,7 @@ fun DetailScreen(
                 },
                 actions = {
                     CoinTopPill(
-                        coins = user?.coins ?: 50,
+                        coins = user?.coins ?: 0,
                         streakDay = user?.streakDay ?: 0,
                         canCheckInToday = user?.canCheckInToday ?: true,
                         onClick = viewModel::openRewardsDialog,
@@ -186,9 +189,26 @@ fun DetailScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(viewModel.scrollState),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    // Offline banner
+                    OfflineBanner(
+                        isOnline = isOnline,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+
+                    // Refreshing indicator
+                    if (state.isRefreshing) {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp),
+                            color = BrandViolet,
+                            trackColor = DarkSurfaceCard,
+                        )
+                    }
+
                     // Header Backdrop Banner with Blur Effect
                     Box(
                         modifier = Modifier
@@ -490,7 +510,7 @@ fun DetailScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(56.dp))
                 }
             }
         }

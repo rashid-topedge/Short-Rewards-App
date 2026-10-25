@@ -1,5 +1,10 @@
-﻿package com.dramflix.android.ui.catalog
+package com.dramflix.android.ui.catalog
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Refresh
@@ -35,6 +41,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -62,10 +69,10 @@ import com.dramflix.android.ui.components.CoinTopPill
 import com.dramflix.android.ui.components.GenreChipsRow
 import com.dramflix.android.ui.components.HeroFeaturedBanner
 import com.dramflix.android.ui.components.ModernDramaGridItem
+import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.QuickCheckInBanner
 import com.dramflix.android.ui.components.RewardAdDialog
 import com.dramflix.android.ui.components.RewardsCenterDialog
-import com.dramflix.android.ui.components.ServerConfigDialog
 import com.dramflix.android.ui.theme.BrandGradient
 import com.dramflix.android.ui.theme.BrandRose
 import com.dramflix.android.ui.theme.BrandViolet
@@ -88,6 +95,7 @@ fun CatalogScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user by viewModel.userProfile.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isUserSyncing.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -99,7 +107,12 @@ fun CatalogScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(bottom = 80.dp),
+            )
+        },
         containerColor = DarkBackground,
     ) { padding ->
         Box(
@@ -115,6 +128,21 @@ fun CatalogScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                // Offline banner
+                OfflineBanner(isOnline = isOnline)
+
+                // Refreshing indicator
+                if (state.isRefreshing) {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(1.dp)),
+                        color = BrandViolet,
+                        trackColor = DarkSurfaceCard,
+                    )
+                }
+
                 // Top App Bar: Brand Logo + Server Settings + Coin Balance Pill
                 Row(
                     modifier = Modifier
@@ -148,22 +176,6 @@ fun CatalogScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        IconButton(
-                            onClick = viewModel::openServerConfigDialog,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(DarkSurfaceCard)
-                                .border(1.dp, DarkBorder, CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Dns,
-                                contentDescription = "Server URL & Port Settings",
-                                tint = BrandVioletLight,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
                         CoinTopPill(
                             coins = user?.coins ?: 50,
                             streakDay = user?.streakDay ?: 0,
@@ -241,13 +253,6 @@ fun CatalogScreen(
                                 ) {
                                     Text("Retry", fontSize = 12.sp, color = Color.White)
                                 }
-                                OutlinedButton(
-                                    onClick = viewModel::openServerConfigDialog,
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Change IP / Port ⚙️", fontSize = 12.sp, color = Color.White)
-                                }
                             }
                         }
                     }
@@ -287,23 +292,17 @@ fun CatalogScreen(
                                         Text("Clear Search")
                                     }
                                 }
-                                Button(
-                                    onClick = viewModel::openServerConfigDialog,
-                                    colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceCard),
-                                    modifier = Modifier.border(1.dp, DarkBorder, RoundedCornerShape(12.dp))
-                                ) {
-                                    Text("⚙️ Configure Server IP:Port", color = TextPrimaryDark)
-                                }
                             }
                         }
                     }
                 } else {
                     LazyVerticalGrid(
+                        state = viewModel.gridState,
                         columns = GridCells.Fixed(2),
                         modifier = Modifier
                             .fillMaxSize()
                             .weight(1f),
-                        contentPadding = PaddingValues(bottom = 24.dp, end = 8.dp, start = 8.dp),
+                        contentPadding = PaddingValues(bottom = 60.dp, end = 8.dp, start = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -420,7 +419,6 @@ fun CatalogScreen(
                 )
             }
 
-            // Dynamic Server IP/Port Configuration Dialog
         }
     }
 }

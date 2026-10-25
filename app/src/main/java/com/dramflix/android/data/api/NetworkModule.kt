@@ -28,12 +28,32 @@ object NetworkModule {
             .build()
     }
 
-    val dramaApi: DramaApi by lazy {
-        Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
-            .client(okHttp)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-            .build()
-            .create(DramaApi::class.java)
-    }
+    @Volatile
+    private var cachedBaseUrl: String? = null
+
+    @Volatile
+    private var cachedApi: DramaApi? = null
+
+    private fun currentBaseUrl(): String = BuildConfig.API_BASE_URL
+
+    val dramaApi: DramaApi
+        get() {
+            val baseUrl = currentBaseUrl()
+            cachedApi?.let { api ->
+                if (baseUrl == cachedBaseUrl) return api
+            }
+            return synchronized(this) {
+                val url = currentBaseUrl()
+                cachedApi?.takeIf { url == cachedBaseUrl } ?: Retrofit.Builder()
+                    .baseUrl(url)
+                    .client(okHttp)
+                    .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+                    .build()
+                    .create(DramaApi::class.java)
+                    .also {
+                        cachedBaseUrl = url
+                        cachedApi = it
+                    }
+            }
+        }
 }

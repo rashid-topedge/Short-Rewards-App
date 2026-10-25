@@ -1,6 +1,7 @@
-﻿package com.dramflix.android.ui.settings
+package com.dramflix.android.ui.settings
 
 import android.app.Application
+import androidx.compose.foundation.ScrollState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -9,9 +10,12 @@ import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.model.CreateRedemptionRequest
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.UserRepository
+import com.dramflix.android.data.util.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -28,7 +32,6 @@ data class RedemptionFormUiState(
     val snackbarMessage: String? = null,
     val showRewardsDialog: Boolean = false,
     val showRewardAdDialog: Boolean = false,
-
 )
 
 data class RedemptionFormSettings(
@@ -39,10 +42,8 @@ data class RedemptionFormSettings(
 
 class RedemptionFormViewModel(
     application: Application,
-    private val userRepository: UserRepository = UserRepository.getInstance(
-        DramaApi.getInstance(),
-        application,
-    ),
+    private val userRepository: UserRepository = UserRepository.getInstance(application),
+    networkMonitor: NetworkMonitor = NetworkMonitor.getInstance(application),
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(RedemptionFormUiState())
@@ -50,6 +51,11 @@ class RedemptionFormViewModel(
 
     val userProfile: StateFlow<UserProfile?> = userRepository.userProfile
     val isUserSyncing: StateFlow<Boolean> = userRepository.isSyncing
+
+    val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    val scrollState = ScrollState(initial = 0)
 
     private val _settings = MutableStateFlow<RedemptionFormSettings?>(null)
     val settings: StateFlow<RedemptionFormSettings?> = _settings.asStateFlow()
@@ -103,12 +109,6 @@ class RedemptionFormViewModel(
 
     fun dismissRewardAdDialog() {
         _state.update { it.copy(showRewardAdDialog = false) }
-    }
-
-    }
-
-    }
-
     }
 
     fun performCheckIn() {
@@ -227,4 +227,3 @@ class RedemptionFormViewModel(
             }
     }
 }
-

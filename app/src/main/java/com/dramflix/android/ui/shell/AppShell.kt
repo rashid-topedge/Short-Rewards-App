@@ -23,6 +23,18 @@ import com.dramflix.android.ui.theme.DarkSurface
 import com.dramflix.android.ui.theme.TextPrimaryDark
 import com.dramflix.android.ui.theme.TextSecondaryDark
 
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.ui.text.font.FontWeight
+import com.dramflix.android.ui.theme.BrandVioletDark
+import com.dramflix.android.ui.theme.DarkBorder
+
 @Composable
 fun AppShell(
     navController: NavController,
@@ -36,58 +48,76 @@ fun AppShell(
         currentRoute == Routes.ReelsList || currentRoute.startsWith("reel/") -> Tab.Reels
         else -> Tab.Settings
     }
+    val isReels = currentRoute == Routes.ReelsList
 
-    // Use contentWindowInsets = WindowInsets(0) so child Scaffolds (on screens with TopAppBar)
-    // manage their own top/status bar insets. The AppShell Scaffold only manages the
-    // bottom nav bar inset via its bottomBar slot.
     Scaffold(
         containerColor = DarkBackground,
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (showBottomBar) {
                 Surface(
-                    color = DarkSurface,
+                    color = if (isReels) Color.Black.copy(alpha = 0.85f) else DarkSurface,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    NavigationBar(containerColor = DarkSurface) {
-                        Tab.entries.forEach { tab ->
-                            val selected = activeRoot == tab
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    navController.navigate(Routes.topLevelDestination(tab)) {
-                                        popUpTo(Routes.Catalog) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = tab.title,
-                                        tint = if (selected) BrandVioletLight else TextSecondaryDark,
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = tab.title,
-                                        color = if (selected) TextPrimaryDark else TextSecondaryDark,
-                                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                                    )
-                                },
-                            )
+                    Column {
+                        HorizontalDivider(
+                            color = DarkBorder,
+                            thickness = 1.dp,
+                        )
+                        NavigationBar(
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp,
+                        ) {
+                            Tab.entries.forEach { tab ->
+                                val selected = activeRoot == tab
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = {
+                                        navController.navigate(Routes.topLevelDestination(tab)) {
+                                            popUpTo(Routes.Catalog) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
+                                    },
+                                    icon = {
+                                        Icon(
+                                            imageVector = tab.icon,
+                                            contentDescription = tab.title,
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = tab.title,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = BrandVioletLight,
+                                        selectedTextColor = Color.White,
+                                        unselectedIconColor = TextSecondaryDark,
+                                        unselectedTextColor = TextSecondaryDark,
+                                        indicatorColor = BrandVioletDark.copy(alpha = 0.4f),
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
             }
         },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            content()
+            // --- REMOVE status bar appearance modifiers from Scaffold ---
+            // android:statusBarColor, android:navigationBarColor, windowLightStatusBar, windowLightNavigationBar removed
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = innerPadding.calculateTopPadding(),
+                        bottom = if (isReels) 0.dp else innerPadding.calculateBottomPadding(),
+                    ),
+            ) {
+                content()
+            }
         }
-    }
 }

@@ -10,9 +10,12 @@ import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.DramaRepository
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.api.DramaApi
+import com.dramflix.android.data.util.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -26,6 +29,7 @@ data class PlayerUiState(
     val finishedAll: Boolean = false,
     val showCompletionCelebration: Boolean = false,
     val lastRewardEarned: Int = 0,
+    val showRewardsDialog: Boolean = false,
     val showRewardAdDialog: Boolean = false,
     val snackbarMessage: String? = null,
 )
@@ -34,19 +38,21 @@ class PlayerViewModel(
     application: Application,
     private val dramaId: Int,
     initialEpisode: Int,
-    private val dramaRepository: DramaRepository = DramaRepository.getInstance(
-        DramaApi.getInstance(),
-    ),
-    private val userRepository: UserRepository = UserRepository.getInstance(
-        DramaApi.getInstance(),
-        application,
-    ),
+    private val dramaRepository: DramaRepository = DramaRepository.getInstance(),
+    private val userRepository: UserRepository = UserRepository.getInstance(application),
+    networkMonitor: NetworkMonitor = NetworkMonitor.getInstance(application),
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(PlayerUiState(currentEpisode = initialEpisode))
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     val userProfile: StateFlow<UserProfile?> = userRepository.userProfile
+    val isUserSyncing: StateFlow<Boolean> = userRepository.isSyncing
+
+    val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    var playbackPositionMs: Long = 0L
 
     private var episodes: List<EpisodeItem> = emptyList()
     private var title: String = ""
@@ -56,6 +62,10 @@ class PlayerViewModel(
         loadCatalog(initialEpisode)
     }
 
+    /**
+     * Tries network first via backward-compatible methods that
+     * internally fall back to Room cache when offline.
+     */
     private fun loadCatalog(startEpisode: Int) {
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, finishedAll = false) }
@@ -76,6 +86,9 @@ class PlayerViewModel(
     }
 
     fun playEpisode(episode: Int) {
+        if (_state.value.currentEpisode != episode) {
+            playbackPositionMs = 0L
+        }
         val item = episodes.firstOrNull { it.ep == episode }
         val url = item?.playUrl?.trim().orEmpty()
         if (url.isEmpty()) {
@@ -126,7 +139,8 @@ class PlayerViewModel(
                             lastRewardEarned = res.coinsEarned,
                         )
                     }
-                } catch (e: Exception) {
+                    userRepository.sync()
+                } catch (_: Exception) {
                     _state.update {
                         it.copy(
                             showCompletionCelebration = true,
@@ -152,6 +166,28 @@ class PlayerViewModel(
         _state.update { it.copy(showCompletionCelebration = false) }
     }
 
+    fun openRewardsDialog() {
+        _state.update { it.copy(showRewardsDialog = true) }
+        viewModelScope.launch {
+            try { userRepository.sync() } catch (_: Exception) {}
+        }
+    }
+
+    fun dismissRewardsDialog() {
+        _state.update { it.copy(showRewardsDialog = false) }
+    }
+
+    fun performCheckIn() {
+        viewModelScope.launch {
+            try {
+                val res = userRepository.checkIn()
+                _state.update { it.copy(snackbarMessage = res.message) }
+            } catch (e: Exception) {
+                _state.update { it.copy(snackbarMessage = e.message ?: "Failed to check in") }
+            }
+        }
+    }
+
     fun openRewardAd() {
         _state.update { it.copy(showRewardAdDialog = true) }
     }
@@ -165,6 +201,7 @@ class PlayerViewModel(
             try {
                 val res = userRepository.rewardAd("PLAYER_COMPLETION_AD")
                 _state.update { it.copy(snackbarMessage = res.message) }
+                userRepository.sync()
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Claimed ad reward") }
             }
@@ -188,20 +225,12 @@ class PlayerViewModel(
             application: Application,
             dramaId: Int,
             episode: Int,
-            repository: DramaRepository = DramaRepository.getInstance(
-                DramaApi.getInstance(),
-            ),
-            userRepository: UserRepository = UserRepository.getInstance(
-                DramaApi.getInstance(),
-                application,
-            ),
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return PlayerViewModel(application, dramaId, episode, repository, userRepository) as T
+                    return PlayerViewModel(application, dramaId, episode) as T
                 }
             }
     }
 }
-

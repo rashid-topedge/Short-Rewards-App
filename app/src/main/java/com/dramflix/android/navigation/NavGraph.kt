@@ -69,6 +69,7 @@ fun DramaNavGraph() {
                 ReelsListScreen(
                     viewModel = vm,
                     onOpenReel = { id -> navController.navigate(Routes.reelDetail(id)) },
+                    onOpenDrama = { dramaId -> navController.navigate(Routes.detail(dramaId)) },
                 )
             }
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -197,6 +198,7 @@ fun RewardsCenterDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
+                .heightIn(max = 680.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .border(1.dp, DarkBorder, RoundedCornerShape(24.dp)),
             color = DarkSurface
@@ -213,6 +215,7 @@ fun RewardsCenterDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
@@ -230,18 +233,22 @@ fun RewardsCenterDialog(
                                 modifier = Modifier.size(24.dp)
                             )
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Rewards & Streak Hub",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = TextPrimaryDark
+                                color = TextPrimaryDark,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = "Current Balance: ${user?.coins ?: 0} Coins",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = CoinGoldLight,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -260,7 +267,7 @@ fun RewardsCenterDialog(
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp)
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
                     // 7-Day Streak Roadmap Card
                     item {
@@ -360,7 +367,7 @@ private fun StreakRoadmapCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -375,13 +382,17 @@ private fun StreakRoadmapCard(
                         text = "7-Day Daily Streak",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimaryDark
+                        color = TextPrimaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = if (currentStreak > 0) "Current streak: Day $currentStreak of 7" else "Start your 7-day streak today!",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondaryDark
+                    color = TextSecondaryDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
@@ -454,10 +465,12 @@ private fun StreakRoadmapCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Claim Today's Reward (+${user?.nextCheckInReward ?: 10} Coins)",
+                        text = "Claim Today (+${user?.nextCheckInReward ?: 10} Coins)",
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontSize = 14.sp
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             } else {
@@ -472,10 +485,12 @@ private fun StreakRoadmapCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "Claimed for today! Next check-in tomorrow",
+                        text = "Claimed today! Next check-in tomorrow",
                         fontWeight = FontWeight.Medium,
                         color = TextSecondaryDark,
-                        fontSize = 13.sp
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -494,8 +509,8 @@ private fun StreakDayCardItem(
 
     Column(
         modifier = modifier
-            .padding(horizontal = 2.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .padding(horizontal = 1.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(
                 when {
                     isAvailable -> Color(0xFF37260C)
@@ -510,21 +525,21 @@ private fun StreakDayCardItem(
                     isClaimed -> SuccessGreen.copy(alpha = 0.6f)
                     else -> DarkBorder
                 },
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(8.dp)
             )
-            .padding(vertical = 8.dp, horizontal = 2.dp),
+            .padding(vertical = 6.dp, horizontal = 1.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
             text = "D${dayInfo.day}",
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             color = if (isAvailable) CoinGoldLight else TextSecondaryDark
         )
 
         Box(
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(18.dp),
             contentAlignment = Alignment.Center
         ) {
             when {
@@ -533,7 +548,7 @@ private fun StreakDayCardItem(
                         imageVector = Icons.Default.Check,
                         contentDescription = "Claimed",
                         tint = SuccessGreen,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
                 isAvailable -> {
@@ -541,7 +556,7 @@ private fun StreakDayCardItem(
                         imageVector = Icons.Default.MonetizationOn,
                         contentDescription = "Available",
                         tint = CoinGold,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
                 else -> {
@@ -549,7 +564,7 @@ private fun StreakDayCardItem(
                         imageVector = Icons.Default.Lock,
                         contentDescription = "Locked",
                         tint = TextMutedDark,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
@@ -559,7 +574,8 @@ private fun StreakDayCardItem(
             text = "+${dayInfo.coins}",
             fontSize = if (isGrandPrize) 10.sp else 9.sp,
             fontWeight = if (isGrandPrize) FontWeight.ExtraBold else FontWeight.Medium,
-            color = if (isGrandPrize) BrandRose else if (isAvailable) CoinGold else TextMutedDark
+            color = if (isGrandPrize) BrandRose else if (isAvailable) CoinGold else TextMutedDark,
+            maxLines = 1
         )
     }
 }
@@ -609,13 +625,16 @@ private fun EarnTaskItem(
                     text = title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = TextPrimaryDark
+                    color = TextPrimaryDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.labelSmall,
                     color = TextSecondaryDark,
-                    maxLines = 1,
+                    maxLines = 2,
+                    lineHeight = 14.sp,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -626,17 +645,16 @@ private fun EarnTaskItem(
         Button(
             onClick = onClick,
             shape = RoundedCornerShape(10.dp),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
             colors = ButtonDefaults.buttonColors(containerColor = BrandViolet)
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = rewardText,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CoinGoldLight
-                )
-            }
+            Text(
+                text = rewardText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = CoinGoldLight,
+                maxLines = 1
+            )
         }
     }
 }

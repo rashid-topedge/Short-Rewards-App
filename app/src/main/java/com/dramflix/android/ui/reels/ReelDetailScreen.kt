@@ -1,4 +1,4 @@
-﻿package com.dramflix.android.ui.reels
+package com.dramflix.android.ui.reels
 
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -58,8 +58,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.dramflix.android.ui.components.CoinTopPill
+import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.RewardAdDialog
 import com.dramflix.android.ui.components.RewardsCenterDialog
 import com.dramflix.android.ui.theme.BrandGradient
@@ -82,6 +86,7 @@ fun ReelDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user by viewModel.userProfile.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isUserSyncing.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val reel = state.reel
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -120,42 +125,11 @@ fun ReelDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IconButton(
-                            onClick = viewModel::openServerConfigDialog,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(DarkSurfaceCard)
-                                .border(1.dp, DarkBorder, RoundedCornerShape(50)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Server URL & Port Settings",
-                                tint = BrandVioletLight,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-
                         CoinTopPill(
-                            coins = user?.coins ?: 50,
+                            coins = user?.coins ?: 0,
                             streakDay = user?.streakDay ?: 0,
                             canCheckInToday = user?.canCheckInToday ?: true,
                             onClick = viewModel::openRewardsDialog,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20))
-                                .background(
-                                    brush = Brush.horizontalGradient(
-                                        listOf(
-                                            Color(0xFF261D08),
-                                            Color(0xFF3B2807),
-                                        ),
-                                    ),
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    brush = if (user?.canCheckInToday == true) BrandGradient else Brush.linearGradient(listOf(DarkBorder, DarkBorder)),
-                                    shape = RoundedCornerShape(20),
-                                ),
                         )
                     }
                 },
@@ -204,10 +178,15 @@ fun ReelDetailScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(viewModel.scrollState),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    OfflineBanner(
+                        isOnline = isOnline,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -218,6 +197,8 @@ fun ReelDetailScreen(
                         if (reel.videoUrl.isNotBlank()) {
                             ReelPlayerView(
                                 playUrl = reel.videoUrl,
+                                initialPositionMs = viewModel.playbackPositionMs,
+                                onPositionChanged = { viewModel.playbackPositionMs = it },
                                 onEnded = viewModel::onReelFinished,
                             )
                         } else {
@@ -381,21 +362,42 @@ fun ReelDetailScreen(
 @Composable
 private fun ReelPlayerView(
     playUrl: String,
+    initialPositionMs: Long = 0L,
+    onPositionChanged: (Long) -> Unit = {},
     onEnded: () -> Unit,
 ) {
     val context = LocalContext.current
     val latestOnEnded by rememberUpdatedState(onEnded)
+    val latestOnPositionChanged by rememberUpdatedState(onPositionChanged)
+    val lifecycleOwner = LocalLifecycleOwner.current
     val player = remember {
         ExoPlayer.Builder(context).build()
     }
 
-    LaunchedEffect(playUrl) {
-        player.setMediaItem(MediaItem.fromUri(playUrl))
-        player.prepare()
-        player.playWhenReady = true
-    }
-
-    DisposableEffect(player) {
+    DisposableEffect(lifecycleOwner, player, playUrl) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    player.setMediaItem(MediaItem.fromUri(playUrl))
+                    if (initialPositionMs > 0L) {
+                        player.seekTo(initialPositionMs)
+                    }
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    val pos = player.currentPosition
+                    if (pos > 0L) {
+                        latestOnPositionChanged(pos)
+                    }
+                    player.pause()
+                    player.stop()
+                    player.clearMediaItems()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -405,6 +407,11 @@ private fun ReelPlayerView(
         }
         player.addListener(listener)
         onDispose {
+            val pos = player.currentPosition
+            if (pos > 0L) {
+                latestOnPositionChanged(pos)
+            }
+            lifecycleOwner.lifecycle.removeObserver(observer)
             player.removeListener(listener)
             player.release()
         }
@@ -418,6 +425,9 @@ private fun ReelPlayerView(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
                 useController = true
+                // Keep controller visible to prevent touch-triggered surface
+                // rebind turning player black.
+                setControllerHideOnTouch(false)
                 this.player = player
             }
         },

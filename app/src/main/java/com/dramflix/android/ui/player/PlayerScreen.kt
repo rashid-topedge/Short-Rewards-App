@@ -47,13 +47,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.dramflix.android.ui.components.CoinTopPill
 import com.dramflix.android.ui.components.EpisodeCompletedCelebrationDialog
+import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.RewardAdDialog
+import com.dramflix.android.ui.components.RewardsCenterDialog
 import com.dramflix.android.ui.theme.BrandViolet
 import com.dramflix.android.ui.theme.CoinGold
 import com.dramflix.android.ui.theme.CoinGoldLight
@@ -69,6 +75,8 @@ fun PlayerScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user by viewModel.userProfile.collectAsStateWithLifecycle()
+    val isSyncing by viewModel.isUserSyncing.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -112,29 +120,13 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
-                    Row(
-                        modifier = Modifier
-                            .padding(end = 12.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF261D08))
-                            .border(1.dp, GoldGradient, RoundedCornerShape(16.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MonetizationOn,
-                            contentDescription = "Coins",
-                            tint = CoinGold,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "${user?.coins ?: 0}",
-                            color = CoinGoldLight,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
+                    CoinTopPill(
+                        coins = user?.coins ?: 0,
+                        streakDay = user?.streakDay ?: 0,
+                        canCheckInToday = user?.canCheckInToday ?: true,
+                        onClick = viewModel::openRewardsDialog,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xCC000000),
@@ -199,9 +191,19 @@ fun PlayerScreen(
                     ExoPlayerView(
                         playUrl = state.playUrl.orEmpty(),
                         episodeKey = state.currentEpisode,
+                        initialPositionMs = viewModel.playbackPositionMs,
+                        onPositionChanged = { viewModel.playbackPositionMs = it },
                         onEnded = {
                             viewModel.onEpisodeFinished()
                         },
+                    )
+
+                    // Offline banner indicator
+                    OfflineBanner(
+                        isOnline = isOnline,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                     )
 
                     // Floating Bottom Fast Switcher
@@ -261,6 +263,20 @@ fun PlayerScreen(
                     onRewardEarned = viewModel::onAdRewardCompleted
                 )
             }
+
+            // Rewards Center Dialog Modal
+            if (state.showRewardsDialog) {
+                RewardsCenterDialog(
+                    user = user,
+                    isSyncing = isSyncing,
+                    onDismiss = viewModel::dismissRewardsDialog,
+                    onCheckIn = viewModel::performCheckIn,
+                    onWatchAd = {
+                        viewModel.dismissRewardsDialog()
+                        viewModel.openRewardAd()
+                    }
+                )
+            }
         }
     }
 }
@@ -269,21 +285,37 @@ fun PlayerScreen(
 private fun ExoPlayerView(
     playUrl: String,
     episodeKey: Int,
+    initialPositionMs: Long = 0L,
+    onPositionChanged: (Long) -> Unit = {},
     onEnded: () -> Unit,
 ) {
     val context = LocalContext.current
     val latestOnEnded by rememberUpdatedState(onEnded)
+    val latestOnPositionChanged by rememberUpdatedState(onPositionChanged)
+    val lifecycleOwner = LocalLifecycleOwner.current
     val player = remember {
         ExoPlayer.Builder(context).build()
     }
 
     LaunchedEffect(playUrl, episodeKey) {
         player.setMediaItem(MediaItem.fromUri(playUrl))
+        if (initialPositionMs > 0L) {
+            player.seekTo(initialPositionMs)
+        }
         player.prepare()
         player.playWhenReady = true
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                val pos = player.currentPosition
+                if (pos > 0L) {
+                    latestOnPositionChanged(pos)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
@@ -293,6 +325,11 @@ private fun ExoPlayerView(
         }
         player.addListener(listener)
         onDispose {
+            val pos = player.currentPosition
+            if (pos > 0L) {
+                latestOnPositionChanged(pos)
+            }
+            lifecycleOwner.lifecycle.removeObserver(observer)
             player.removeListener(listener)
             player.release()
         }

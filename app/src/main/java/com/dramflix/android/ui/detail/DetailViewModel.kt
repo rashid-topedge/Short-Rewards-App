@@ -1,6 +1,7 @@
 package com.dramflix.android.ui.detail
 
 import android.app.Application
+import androidx.compose.foundation.ScrollState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -11,10 +12,12 @@ import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.DramaRepository
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.api.DramaApi
-import kotlinx.coroutines.async
+import com.dramflix.android.data.util.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -22,6 +25,7 @@ data class DetailUiState(
     val drama: DramaDetail? = null,
     val episodes: List<EpisodeItem> = emptyList(),
     val loading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val isFavorite: Boolean = false,
     val showRewardsDialog: Boolean = false,
@@ -32,13 +36,9 @@ data class DetailUiState(
 class DetailViewModel(
     application: Application,
     private val dramaId: Int,
-    private val dramaRepository: DramaRepository = DramaRepository.getInstance(
-        DramaApi.getInstance(),
-    ),
-    private val userRepository: UserRepository = UserRepository.getInstance(
-        DramaApi.getInstance(),
-        application,
-    ),
+    private val dramaRepository: DramaRepository = DramaRepository.getInstance(),
+    private val userRepository: UserRepository = UserRepository.getInstance(application),
+    networkMonitor: NetworkMonitor = NetworkMonitor.getInstance(application),
 ) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(DetailUiState())
@@ -47,32 +47,54 @@ class DetailViewModel(
     val userProfile: StateFlow<UserProfile?> = userRepository.userProfile
     val isUserSyncing: StateFlow<Boolean> = userRepository.isSyncing
 
+    val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    val scrollState = ScrollState(initial = 0)
+
     init {
         load()
     }
 
     fun load() {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            try {
-                val dramaDeferred = async { dramaRepository.getDrama(dramaId) }
-                val episodesDeferred = async { dramaRepository.listEpisodes(dramaId) }
-                val drama = dramaDeferred.await()
-                val episodes = episodesDeferred.await()
-                _state.update {
-                    it.copy(
-                        drama = drama,
-                        episodes = episodes.episodes.sortedBy { ep -> ep.ep },
-                        loading = false,
-                        error = null,
-                    )
+            // Observe cached detail from Room
+            launch {
+                dramaRepository.observeDetail(dramaId).collect { detail ->
+                    if (detail != null) {
+                        _state.update {
+                            it.copy(drama = detail, loading = false)
+                        }
+                    }
                 }
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        loading = false,
-                        error = e.message ?: "Could not load drama",
-                    )
+            }
+            // Observe cached episodes from Room
+            launch {
+                dramaRepository.observeEpisodes(dramaId).collect { eps ->
+                    if (eps.isNotEmpty()) {
+                        _state.update {
+                            it.copy(episodes = eps.sortedBy { ep -> ep.ep })
+                        }
+                    }
+                }
+            }
+            // Network refresh — writes to Room, Flows auto-update
+            launch {
+                _state.update { it.copy(isRefreshing = true, error = null) }
+                try {
+                    dramaRepository.refreshDetail(dramaId)
+                    dramaRepository.refreshEpisodes(dramaId)
+                    _state.update { it.copy(isRefreshing = false, error = null) }
+                } catch (e: Exception) {
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            isRefreshing = false,
+                            error = if (it.drama == null) {
+                                e.message ?: "Could not load drama"
+                            } else null,
+                        )
+                    }
                 }
             }
         }
@@ -93,7 +115,7 @@ class DetailViewModel(
         viewModelScope.launch {
             try {
                 userRepository.sync()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // keep existing behavior silent on first failure
             }
         }
@@ -127,6 +149,7 @@ class DetailViewModel(
             try {
                 val res = userRepository.rewardAd("REWARDED_VIDEO")
                 _state.update { it.copy(snackbarMessage = res.message) }
+                userRepository.sync()
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Failed to claim ad reward") }
             }
@@ -141,20 +164,12 @@ class DetailViewModel(
         fun factory(
             application: Application,
             dramaId: Int,
-            dramaRepository: DramaRepository = DramaRepository.getInstance(
-                DramaApi.getInstance(),
-            ),
-            userRepository: UserRepository = UserRepository.getInstance(
-                DramaApi.getInstance(),
-                application,
-            ),
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return DetailViewModel(application, dramaId, dramaRepository, userRepository) as T
+                    return DetailViewModel(application, dramaId) as T
                 }
             }
     }
 }
-

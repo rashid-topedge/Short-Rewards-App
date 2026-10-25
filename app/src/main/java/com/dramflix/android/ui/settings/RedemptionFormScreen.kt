@@ -1,4 +1,4 @@
-﻿package com.dramflix.android.ui.settings
+package com.dramflix.android.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,9 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dramflix.android.ui.components.CoinTopPill
+import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.RewardsCenterDialog
 import com.dramflix.android.ui.components.RewardAdDialog
-import com.dramflix.android.ui.components.ServerConfigDialog
 import com.dramflix.android.ui.theme.BrandGradient
 import com.dramflix.android.ui.theme.BrandRose
 import com.dramflix.android.ui.theme.BrandViolet
@@ -85,6 +85,7 @@ fun RedemptionFormScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val user by viewModel.userProfile.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isUserSyncing.collectAsStateWithLifecycle()
+    val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -123,48 +124,13 @@ fun RedemptionFormScreen(
                     }
                 },
                 actions = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        IconButton(
-                            onClick = viewModel::openServerConfigDialog,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(DarkSurfaceCard)
-                                .border(1.dp, DarkBorder, RoundedCornerShape(50)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Server URL & Port Settings",
-                                tint = BrandVioletLight,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-
-                        CoinTopPill(
-                            coins = user?.coins ?: 50,
-                            streakDay = user?.streakDay ?: 0,
-                            canCheckInToday = user?.canCheckInToday ?: true,
-                            onClick = viewModel::openRewardsDialog,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20))
-                                .background(
-                                    brush = Brush.horizontalGradient(
-                                        listOf(
-                                            Color(0xFF261D08),
-                                            Color(0xFF3B2807),
-                                        ),
-                                    ),
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    brush = if (user?.canCheckInToday == true) GoldGradient else Brush.linearGradient(listOf(DarkBorder, DarkBorder)),
-                                    shape = RoundedCornerShape(20),
-                                ),
-                        )
-                    }
+                    CoinTopPill(
+                        coins = user?.coins ?: 0,
+                        streakDay = user?.streakDay ?: 0,
+                        canCheckInToday = user?.canCheckInToday ?: true,
+                        onClick = viewModel::openRewardsDialog,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = DarkBackground.copy(alpha = 0.95f),
@@ -180,6 +146,8 @@ fun RedemptionFormScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            OfflineBanner(isOnline = isOnline)
+
             // Balance display
             Surface(
                 modifier = Modifier
@@ -224,7 +192,7 @@ fun RedemptionFormScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(viewModel.scrollState),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 RedemptionTextField(
@@ -387,6 +355,8 @@ fun RedemptionFormScreen(
                 ) {
                     Text("Cancel", fontSize = 13.sp, color = TextSecondaryDark)
                 }
+
+                Spacer(modifier = Modifier.height(48.dp))
             }
         }
 
