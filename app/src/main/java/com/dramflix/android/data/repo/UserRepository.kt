@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import java.time.LocalDate
+import java.util.Calendar
 
 /**
  * User repository – now **offline-first**.
@@ -187,7 +188,13 @@ class UserRepository private constructor(
         )
     }
 
-    private fun todayIso(): String = LocalDate.now().toString()
+    private fun todayIso(): String {
+        val calendar = Calendar.getInstance()
+        val year = calendar.get(Calendar.YEAR)
+        val month = calendar.get(Calendar.MONTH) + 1
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+        return String.format("%04d-%02d-%02d", year, month, day)
+    }
 
     companion object {
         private const val KEY_USER_ID = "user_id"

@@ -130,6 +130,10 @@ class SettingsViewModel(
         }
     }
 
+    fun openServerConfigDialog() {
+        _state.update { it.copy(snackbarMessage = "Server config dialog placeholder") }
+    }
+
     companion object {
         fun factory(application: Application): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {

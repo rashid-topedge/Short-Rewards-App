@@ -12,70 +12,124 @@ import com.dramflix.android.data.model.RedemptionListResponse
 import com.dramflix.android.data.model.RewardResult
 import com.dramflix.android.data.model.SystemSettingsDto
 import com.dramflix.android.data.model.UserProfile
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
-import retrofit2.http.Query
 
 interface DramaApi {
-    @GET("api/dramas")
-    suspend fun getDramas(
-        @Query("limit") limit: Int,
-        @Query("cursor") cursor: String?,
-        @Query("q") query: String?,
-    ): DramaListResponse
-
-    @GET("api/dramas/{dramaId}")
-    suspend fun getDrama(@Path("dramaId") dramaId: Int): DramaDetail
-
-    @GET("api/dramas/{dramaId}/episodes")
-    suspend fun getEpisodes(@Path("dramaId") dramaId: Int): EpisodeListResponse
-
-    @GET("api/reels")
-    suspend fun getReels(
-        @Query("limit") limit: Int,
-        @Query("cursor") cursor: String?,
-        @Query("dramaId") dramaId: Int?,
-        @Query("sort") sort: String?,
-    ): ReelListResponse
-
-    @GET("api/reels/{reelId}")
-    suspend fun getReel(@Path("reelId") reelId: Int): ReelItem
-
-    @POST("api/reels/{reelId}")
-    suspend fun reelAction(
-        @Path("reelId") reelId: Int,
-        @Body body: ReelActionRequest,
-    ): ApiActionResult
-
-    @POST("api/user/sync")
-    suspend fun syncUser(@Body body: UserIdRequest): UserProfile
-
-    @POST("api/user/checkin")
-    suspend fun checkIn(@Body body: UserIdRequest): CheckInResult
-
-    @POST("api/user/reward/ad")
-    suspend fun rewardAd(@Body body: RewardAdRequest): RewardResult
-
-    @POST("api/user/reward/episode")
-    suspend fun rewardEpisode(@Body body: RewardEpisodeRequest): RewardResult
-
-    @POST("api/user/reward/reel")
-    suspend fun rewardReel(@Body body: RewardReelRequest): RewardResult
-
-    @GET("api/user/redeem")
-    suspend fun listRedemptions(@Query("userId") userId: String): RedemptionListResponse
-
-    @POST("api/user/redeem")
-    suspend fun createRedemption(@Body body: CreateRedemptionRequest): RedemptionCreateResponse
-
-    @GET("api/user/redeem/settings")
+    suspend fun getDramas(limit: Int, cursor: String?, query: String?): DramaListResponse
+    suspend fun getDrama(dramaId: Int): DramaDetail
+    suspend fun getEpisodes(dramaId: Int): EpisodeListResponse
+    suspend fun getReels(limit: Int, cursor: String?, dramaId: Int?, sort: String?): ReelListResponse
+    suspend fun getReel(reelId: Int): ReelItem
+    suspend fun reelAction(reelId: Int, body: ReelActionRequest): ApiActionResult
+    suspend fun syncUser(body: UserIdRequest): UserProfile
+    suspend fun checkIn(body: UserIdRequest): CheckInResult
+    suspend fun rewardAd(body: RewardAdRequest): RewardResult
+    suspend fun rewardEpisode(body: RewardEpisodeRequest): RewardResult
+    suspend fun rewardReel(body: RewardReelRequest): RewardResult
+    suspend fun listRedemptions(userId: String): RedemptionListResponse
+    suspend fun createRedemption(body: CreateRedemptionRequest): RedemptionCreateResponse
     suspend fun getRedemptionSettings(): SystemSettingsDto
 
     companion object {
         fun getInstance(): DramaApi = NetworkModule.dramaApi
+    }
+}
+
+class DramaApiImpl(private val client: HttpClient) : DramaApi {
+    override suspend fun getDramas(limit: Int, cursor: String?, query: String?): DramaListResponse {
+        return client.get("api/dramas") {
+            parameter("limit", limit)
+            parameter("cursor", cursor)
+            parameter("q", query)
+        }.body()
+    }
+
+    override suspend fun getDrama(dramaId: Int): DramaDetail {
+        return client.get("api/dramas/$dramaId").body()
+    }
+
+    override suspend fun getEpisodes(dramaId: Int): EpisodeListResponse {
+        return client.get("api/dramas/$dramaId/episodes").body()
+    }
+
+    override suspend fun getReels(limit: Int, cursor: String?, dramaId: Int?, sort: String?): ReelListResponse {
+        return client.get("api/reels") {
+            parameter("limit", limit)
+            parameter("cursor", cursor)
+            parameter("dramaId", dramaId)
+            parameter("sort", sort)
+        }.body()
+    }
+
+    override suspend fun getReel(reelId: Int): ReelItem {
+        return client.get("api/reels/$reelId").body()
+    }
+
+    override suspend fun reelAction(reelId: Int, body: ReelActionRequest): ApiActionResult {
+        return client.post("api/reels/$reelId") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun syncUser(body: UserIdRequest): UserProfile {
+        return client.post("api/user/sync") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun checkIn(body: UserIdRequest): CheckInResult {
+        return client.post("api/user/checkin") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun rewardAd(body: RewardAdRequest): RewardResult {
+        return client.post("api/user/reward/ad") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun rewardEpisode(body: RewardEpisodeRequest): RewardResult {
+        return client.post("api/user/reward/episode") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun rewardReel(body: RewardReelRequest): RewardResult {
+        return client.post("api/user/reward/reel") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun listRedemptions(userId: String): RedemptionListResponse {
+        return client.get("api/user/redeem") {
+            parameter("userId", userId)
+        }.body()
+    }
+
+    override suspend fun createRedemption(body: CreateRedemptionRequest): RedemptionCreateResponse {
+        return client.post("api/user/redeem") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
+    }
+
+    override suspend fun getRedemptionSettings(): SystemSettingsDto {
+        return client.get("api/user/redeem/settings").body()
     }
 }
 

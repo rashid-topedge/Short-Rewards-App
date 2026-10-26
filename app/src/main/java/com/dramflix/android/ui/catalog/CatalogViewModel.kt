@@ -1,6 +1,7 @@
 package com.dramflix.android.ui.catalog
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -104,6 +105,9 @@ class CatalogViewModel(
                         )
                     }
                 } catch (e: Exception) {
+                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.message}", )
+                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.localizedMessage}", )
+                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.stackTraceToString()}", )
                     _state.update {
                         it.copy(
                             isRefreshing = false,
@@ -172,6 +176,8 @@ class CatalogViewModel(
     fun dismissRewardAdDialog() {
         _state.update { it.copy(showRewardAdDialog = false) }
     }
+
+    fun openServerConfigDialog() {}
 
     fun performCheckIn() {
         viewModelScope.launch {

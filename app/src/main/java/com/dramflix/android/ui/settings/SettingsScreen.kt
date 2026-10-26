@@ -127,22 +127,6 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IconButton(
-                            onClick = viewModel::openServerConfigDialog,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(DarkSurfaceCard)
-                                .border(1.dp, DarkBorder, RoundedCornerShape(50)),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Server URL & Port Settings",
-                                tint = BrandVioletLight,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
-
                         CoinTopPill(
                             coins = user?.coins ?: 50,
                             streakDay = user?.streakDay ?: 0,
