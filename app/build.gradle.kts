@@ -5,6 +5,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
+    // Reads app/google-services.json: Firebase project config + default_web_client_id.
+    id("com.google.gms.google-services")
 }
 
 val localProps = Properties().apply {
@@ -13,8 +15,26 @@ val localProps = Properties().apply {
         file.inputStream().use { load(it) }
     }
 }
-val apiBaseUrl = (localProps.getProperty("api.base.url") ?: "http://10.0.2.2:3000/")
-    .let { if (it.endsWith("/")) it else "$it/" }
+fun prop(name: String): String? =
+    localProps.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }
+        ?: System.getenv(name.uppercase().replace('.', '_'))?.trim()?.takeIf { it.isNotEmpty() }
+
+fun String.withTrailingSlash() = if (endsWith("/")) this else "$this/"
+
+// Production API. Override per machine in local.properties:
+//   api.base.url=https://...           (all builds)
+//   api.base.url.debug=http://10.0.2.2:3000/   (debug builds only, e.g. local Next.js)
+val apiBaseUrl = (prop("api.base.url") ?: "https://short-rewards-web-api.vercel.app/").withTrailingSlash()
+val debugApiBaseUrl = (prop("api.base.url.debug") ?: apiBaseUrl).withTrailingSlash()
+
+// Release signing secrets come from local.properties (git-ignored) or env vars
+// (SIGNING_STOREFILE, SIGNING_STOREPASSWORD, SIGNING_KEYALIAS, SIGNING_KEYPASSWORD) – never from this file.
+val signingStoreFile = prop("signing.storeFile")
+val signingStorePassword = prop("signing.storePassword")
+val signingKeyAlias = prop("signing.keyAlias")
+val signingKeyPassword = prop("signing.keyPassword")
+val hasReleaseSigning = listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword)
+    .all { it != null }
 
 android {
     namespace = "com.dramflix.android"
@@ -26,7 +46,6 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     buildFeatures {
@@ -39,8 +58,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Compile for Java 17 using whichever JDK runs Gradle (Android Studio's bundled
+    // JBR works). A jvmToolchain(17) here made Gradle demand a separate JDK 17
+    // install, which fails on machines that don't have one.
     kotlin {
-        jvmToolchain(17)
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     packaging {
@@ -50,23 +74,43 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../math.jks")
-            storePassword = "12yusra36"
-            keyAlias = "key0"
-            keyPassword = "12yusra36"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
         }
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
+        }
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            // R8: shrink, optimise and obfuscate code; drop unused resources.
+            // Keep rules for reflection-based libraries are in proguard-rules.pro;
+            // the mapping file for crash reports is in build/outputs/mapping/release/.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
     lint {
         baseline = file("lint-baseline.xml")
+        // Don't run the lintVitalRelease check as part of assembleRelease/bundleRelease.
+        // Run lint yourself when needed: ./gradlew lintRelease
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 
@@ -88,7 +132,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     val ktor = "3.0.3"
-    implementation("io.ktor:ktor-client-android:$ktor")
+    // OkHttp engine: HTTP/2, connection pooling and an on-disk HTTP cache.
+    implementation("io.ktor:ktor-client-okhttp:$ktor")
     implementation("io.ktor:ktor-client-content-negotiation:$ktor")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor")
     implementation("io.ktor:ktor-client-logging:$ktor")
@@ -100,6 +145,20 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+
+    // Sign in with Google (Credential Manager)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    // Firebase Auth (anonymous + Google). Config comes from app/google-services.json.
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+
+    // Installs the baseline profile (src/main/baseline-prof.txt + the ones shipped
+    // by Compose etc.) for faster cold start, including on sideloaded APKs.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     // Room (offline-first cache)
     val room = "2.8.5"

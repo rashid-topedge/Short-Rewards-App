@@ -6,11 +6,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.dramflix.android.BuildConfig
+import com.dramflix.android.data.AppContainer
 import com.dramflix.android.data.model.RedemptionRequest
 import com.dramflix.android.data.model.SystemSettingsDto
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.util.NetworkMonitor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
-    val serverUrl: String = "https://short-rewards-web-api.vercel.app/",
+    val serverUrl: String = BuildConfig.API_BASE_URL,
     val paymentMethod: String = "Easypaisa",
     val animationsEnabled: Boolean = true,
     val showRewardsDialog: Boolean = false,
@@ -60,7 +64,7 @@ class SettingsViewModel(
     fun syncUser() {
         viewModelScope.launch {
             try {
-                userRepository.sync()
+                userRepository.sync(force = true)
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Sync failed") }
             }
@@ -118,12 +122,31 @@ class SettingsViewModel(
         _state.update { it.copy(snackbarMessage = null) }
     }
 
+    fun showMessage(message: String) {
+        _state.update { it.copy(snackbarMessage = message) }
+    }
+
+    /** After linking Google: pull the full profile (googleLinked / email). */
+    fun onGoogleLinked() {
+        viewModelScope.launch { userRepository.sync(force = true) }
+    }
+
+    /** Revokes the session; the app root then shows the sign-in screen. */
+    fun signOut() {
+        AppContainer.appScope.launch { AppContainer.auth.signOut() }
+    }
+
+    private var redemptionsJob: Job? = null
+
     fun loadRedemptions() {
-        viewModelScope.launch {
+        if (redemptionsJob?.isActive == true) return
+        redemptionsJob = viewModelScope.launch {
             _state.update { it.copy(loadingRedemptions = true, errorRedemptions = null) }
             try {
                 val list = userRepository.listRedemptions()
                 _state.update { it.copy(redemptions = list, loadingRedemptions = false, errorRedemptions = null) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(loadingRedemptions = false, errorRedemptions = e.message ?: "Failed to load redemptions") }
             }

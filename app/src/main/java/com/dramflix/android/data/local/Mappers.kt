@@ -27,7 +27,7 @@ private val mapperJson = Json {
 
 // ─── DramaCard ─────────────────────────────────────────────
 
-fun DramaCard.toEntity(queryTag: String = "", sortOrder: Int = 0): DramaCardEntity =
+fun DramaCard.toEntity(): DramaCardEntity =
     DramaCardEntity(
         dramaId = dramaId,
         slug = slug,
@@ -37,8 +37,6 @@ fun DramaCard.toEntity(queryTag: String = "", sortOrder: Int = 0): DramaCardEnti
         episodeCount = episodeCount,
         latestEpisodeLabel = latestEpisodeLabel,
         isPublished = isPublished,
-        queryTag = queryTag,
-        sortOrder = sortOrder,
     )
 
 fun DramaCardEntity.toDomain(): DramaCard =
@@ -105,7 +103,7 @@ fun EpisodeEntity.toDomain(): EpisodeItem =
 
 // ─── Reel ──────────────────────────────────────────────────
 
-fun ReelItem.toEntity(sortTag: String = "newest", sortOrder: Int = 0): ReelEntity =
+fun ReelItem.toEntity(): ReelEntity =
     ReelEntity(
         reelId = reelId,
         title = title,
@@ -122,8 +120,6 @@ fun ReelItem.toEntity(sortTag: String = "newest", sortOrder: Int = 0): ReelEntit
         isPublished = isPublished,
         createdAt = createdAt,
         updatedAt = updatedAt,
-        sortTag = sortTag,
-        sortOrder = sortOrder,
     )
 
 fun ReelEntity.toDomain(): ReelItem =
@@ -158,6 +154,8 @@ fun UserProfile.toEntity(): UserProfileEntity =
         nextCheckInReward = nextCheckInReward,
         streakScheduleJson = mapperJson.encodeToString(streakSchedule),
         transactionsJson = mapperJson.encodeToString(transactions),
+        googleLinked = googleLinked,
+        googleEmail = googleEmail,
     )
 
 fun UserProfileEntity.toDomain(): UserProfile =
@@ -174,4 +172,6 @@ fun UserProfileEntity.toDomain(): UserProfile =
         transactions = runCatching {
             mapperJson.decodeFromString<List<CoinTransaction>>(transactionsJson)
         }.getOrDefault(emptyList()),
+        googleLinked = googleLinked,
+        googleEmail = googleEmail,
     )

@@ -1,18 +1,17 @@
 package com.dramflix.android.ui.catalog
 
 import android.app.Application
-import android.util.Log
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.model.DramaCard
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.DramaRepository
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.util.NetworkMonitor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -63,6 +62,9 @@ class CatalogViewModel(
     /** Active Room-observation job — cancelled & relaunched on query changes. */
     private var observeJob: Job? = null
 
+    /** In-flight "load more" request; cancelled when the query changes or a refresh starts. */
+    private var loadMoreJob: Job? = null
+
     init {
         observeAndRefresh(query = "")
         viewModelScope.launch {
@@ -80,6 +82,9 @@ class CatalogViewModel(
      */
     private fun observeAndRefresh(query: String) {
         observeJob?.cancel()
+        loadMoreJob?.cancel()
+        // A cursor belongs to one query; never reuse it for another.
+        _state.update { it.copy(nextCursor = null, loadingMore = false) }
         observeJob = viewModelScope.launch {
             // Collect cached items from Room — emits immediately if cache exists
             launch {
@@ -104,10 +109,9 @@ class CatalogViewModel(
                             error = null,
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.message}", )
-                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.localizedMessage}", )
-                    Log.e("fhsjdkfh", "observeAndRefresh: ${e.stackTraceToString()}", )
                     _state.update {
                         it.copy(
                             isRefreshing = false,
@@ -194,8 +198,8 @@ class CatalogViewModel(
         viewModelScope.launch {
             try {
                 val res = userRepository.rewardAd("REWARDED_VIDEO")
+                // The reward response already carries the updated balance.
                 _state.update { it.copy(snackbarMessage = res.message) }
-                userRepository.sync()
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Failed to claim ad reward") }
             }
@@ -212,14 +216,16 @@ class CatalogViewModel(
     }
 
     fun loadMore() {
-        val cursor = _state.value.nextCursor ?: return
-        if (_state.value.loadingMore || _state.value.loading) return
+        val current = _state.value
+        val cursor = current.nextCursor ?: return
+        if (current.loadingMore || current.loading || current.isRefreshing) return
+        val query = current.query
 
-        viewModelScope.launch {
+        loadMoreJob = viewModelScope.launch {
             _state.update { it.copy(loadingMore = true, error = null) }
             try {
                 val response = dramaRepository.refreshDramas(
-                    query = _state.value.query,
+                    query = query,
                     cursor = cursor,
                     append = true,
                 )
@@ -230,6 +236,8 @@ class CatalogViewModel(
                         error = null,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(

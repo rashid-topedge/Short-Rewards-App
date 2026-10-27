@@ -54,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dramflix.android.ui.auth.GoogleSignInButton
+import com.dramflix.android.ui.auth.rememberGoogleBackupLauncher
 import com.dramflix.android.ui.components.CoinTopPill
 import com.dramflix.android.ui.components.OfflineBanner
 import com.dramflix.android.ui.components.RewardsCenterDialog
@@ -308,6 +310,39 @@ fun RedemptionFormScreen(
                                 fontWeight = FontWeight.Medium,
                             )
                         }
+                    }
+                }
+
+                if (state.requiresGoogleLink) {
+                    val backup = rememberGoogleBackupLauncher(
+                        onMessage = viewModel::showMessage,
+                        onLinked = viewModel::onGoogleLinked,
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DarkSurfaceCard)
+                            .border(1.dp, CoinGoldLight.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "Link Google to redeem",
+                            color = TextPrimaryDark,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                        )
+                        Text(
+                            text = "To keep payouts safe, redemptions need an account backed up with Google. Your coins stay on this account.",
+                            color = TextSecondaryDark,
+                            fontSize = 13.sp,
+                        )
+                        GoogleSignInButton(
+                            text = "Link Google account",
+                            onClick = backup::launch,
+                            loading = backup.busy,
+                        )
                     }
                 }
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources looked up by name at runtime (Resources.getIdentifier), which the
+     resource shrinker can't see:
+     - default_web_client_id: generated from google-services.json, used for Google sign-in
+     - ic_google_logo: optional official Google "G" logo for the sign-in button -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/default_web_client_id,@drawable/ic_google_logo*" />

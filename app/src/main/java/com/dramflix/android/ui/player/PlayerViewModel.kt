@@ -9,8 +9,9 @@ import com.dramflix.android.data.model.EpisodeItem
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.DramaRepository
 import com.dramflix.android.data.repo.UserRepository
-import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.util.NetworkMonitor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -66,14 +67,19 @@ class PlayerViewModel(
      * Tries network first via backward-compatible methods that
      * internally fall back to Room cache when offline.
      */
+    private var loadJob: Job? = null
+
     private fun loadCatalog(startEpisode: Int) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null, finishedAll = false) }
             try {
                 val drama = dramaRepository.getDrama(dramaId)
                 title = drama.title.orEmpty()
                 episodes = dramaRepository.listEpisodes(dramaId).episodes.sortedBy { it.ep }
                 playEpisode(startEpisode)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(
@@ -133,18 +139,25 @@ class PlayerViewModel(
             viewModelScope.launch {
                 try {
                     val res = userRepository.rewardEpisode(dramaId, currentEp)
+                    // The reward response already carries the updated balance; no extra sync.
                     _state.update {
                         it.copy(
                             showCompletionCelebration = true,
                             lastRewardEarned = res.coinsEarned,
                         )
                     }
-                    userRepository.sync()
-                } catch (_: Exception) {
+                } catch (e: CancellationException) {
+                    rewardedEpisodes.remove(currentEp)
+                    throw e
+                } catch (e: Exception) {
+                    // Previously this showed a fake "+15 coins" even though nothing was
+                    // credited. Show the real reason and allow the claim to be retried.
+                    rewardedEpisodes.remove(currentEp)
                     _state.update {
                         it.copy(
                             showCompletionCelebration = true,
-                            lastRewardEarned = 15,
+                            lastRewardEarned = 0,
+                            snackbarMessage = e.message ?: "Couldn't claim the episode reward",
                         )
                     }
                 }
@@ -201,9 +214,10 @@ class PlayerViewModel(
             try {
                 val res = userRepository.rewardAd("PLAYER_COMPLETION_AD")
                 _state.update { it.copy(snackbarMessage = res.message) }
-                userRepository.sync()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _state.update { it.copy(snackbarMessage = e.message ?: "Claimed ad reward") }
+                _state.update { it.copy(snackbarMessage = e.message ?: "Failed to claim ad reward") }
             }
         }
     }

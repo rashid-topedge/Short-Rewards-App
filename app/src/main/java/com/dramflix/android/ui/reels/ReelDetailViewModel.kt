@@ -18,7 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.concurrent.CancellationException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 
 data class ReelDetailUiState(
     val reel: ReelItem? = null,
@@ -52,12 +53,21 @@ class ReelDetailViewModel(
     val scrollState = ScrollState(initial = 0)
     var playbackPositionMs: Long = 0L
 
+    private var loadJob: Job? = null
+
     init {
+        viewModelScope.launch {
+            reelsRepository.observeIsLiked(reelId).collect { liked ->
+                _state.update { it.copy(isLiked = liked) }
+            }
+        }
         load()
     }
 
+    /** Also used by the Retry button, so it replaces any previous load instead of stacking collectors. */
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Observe cached reel from Room
             launch {
                 reelsRepository.observeReel(reelId).collect { reel ->
@@ -65,7 +75,6 @@ class ReelDetailViewModel(
                         _state.update {
                             it.copy(
                                 reel = reel,
-                                isLiked = it.isLiked || reel.likeCount > 0,
                                 loading = false,
                             )
                         }
@@ -80,13 +89,14 @@ class ReelDetailViewModel(
                     _state.update {
                         it.copy(
                             reel = reel,
-                            isLiked = reel.likeCount > 0,
                             loading = false,
                             isRefreshing = false,
                             error = null,
                         )
                     }
-                    recordView()
+                    // No separate view ping: GET /api/reels/{id} already counts this view.
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     _state.update {
                         it.copy(
@@ -102,29 +112,22 @@ class ReelDetailViewModel(
         }
     }
 
-    private var hasRecordedView = false
-    private fun recordView() {
-        if (!hasRecordedView) {
-            hasRecordedView = true
-            viewModelScope.launch {
-                try {
-                    reelsRepository.recordView(reelId)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
+    /**
+     * The heart reflects this user's own like (stored locally). It used to be
+     * `likeCount > 0`, so any reel liked by anyone showed as liked and tapping
+     * it sent an "unlike" for a like the user never made.
+     */
     fun toggleLike() {
         val willBeLiked = !_state.value.isLiked
         _state.update { current ->
-            current.copy(
-                isLiked = willBeLiked,
-                snackbarMessage = if (willBeLiked) "Liked!" else "Like removed",
-            )
+            current.copy(snackbarMessage = if (willBeLiked) "Liked!" else "Like removed")
         }
         viewModelScope.launch {
             try {
-                reelsRepository.toggleLike(reelId, willBeLiked)
+                val ok = reelsRepository.setLiked(reelId, willBeLiked)
+                if (!ok) _state.update { it.copy(snackbarMessage = "Like failed") }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Like failed") }
             }

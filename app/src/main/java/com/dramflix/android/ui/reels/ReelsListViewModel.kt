@@ -6,13 +6,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.model.ReelItem
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.ReelSort
 import com.dramflix.android.data.repo.ReelsRepository
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.util.NetworkMonitor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,8 +60,15 @@ class ReelsListViewModel(
     var currentPage: Int = 0
 
     private var observeJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     init {
+        // Liked state is persisted locally, so hearts survive restarts.
+        viewModelScope.launch {
+            reelsRepository.observeLikedIds().collect { ids ->
+                _state.update { it.copy(likedReelIds = ids) }
+            }
+        }
         observeAndRefresh()
         viewModelScope.launch {
             try {
@@ -81,6 +88,9 @@ class ReelsListViewModel(
     private fun observeAndRefresh() {
         val sort = currentSort()
         observeJob?.cancel()
+        loadMoreJob?.cancel()
+        // A cursor belongs to one feed; never reuse it for another sort.
+        _state.update { it.copy(nextCursor = null, loadingMore = false) }
         observeJob = viewModelScope.launch {
             // Observe Room cache
             launch {
@@ -100,6 +110,8 @@ class ReelsListViewModel(
                             error = null,
                         )
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     _state.update {
                         it.copy(
@@ -131,40 +143,34 @@ class ReelsListViewModel(
 
     private val recordedViews = mutableSetOf<Int>()
 
+    /**
+     * Counts a view once per reel per session. The repository bumps the cached
+     * count in Room (which re-emits [ReelsListUiState.items]), so no overlay is needed.
+     */
     fun recordView(reelId: Int) {
         if (recordedViews.add(reelId)) {
-            _state.update { current ->
-                val currentCount = current.viewCounts[reelId]
-                    ?: current.items.find { it.reelId == reelId }?.viewCount ?: 0
-                current.copy(
-                    viewCounts = current.viewCounts + (reelId to (currentCount + 1)),
-                )
-            }
             viewModelScope.launch {
-                try {
-                    reelsRepository.recordView(reelId)
-                } catch (_: Exception) {}
+                reelsRepository.recordView(reelId)
             }
         }
     }
 
+    /**
+     * Optimistic like: the repository flips the heart + count in Room right away
+     * and rolls back if the server rejects it, so the UI always ends up matching
+     * the server.
+     */
     fun toggleLike(reelId: Int) {
-        val wasLiked = _state.value.likedReelIds.contains(reelId)
-        val willBeLiked = !wasLiked
-        _state.update { current ->
-            val newLiked = if (wasLiked) current.likedReelIds - reelId else current.likedReelIds + reelId
-            val currentCount = current.likeCounts[reelId]
-                ?: current.items.find { it.reelId == reelId }?.likeCount ?: 0
-            val newCount = if (wasLiked) (currentCount - 1).coerceAtLeast(0) else currentCount + 1
-            current.copy(
-                likedReelIds = newLiked,
-                likeCounts = current.likeCounts + (reelId to newCount),
-                snackbarMessage = if (willBeLiked) "Liked!" else "Like removed",
-            )
+        val willBeLiked = !_state.value.likedReelIds.contains(reelId)
+        _state.update {
+            it.copy(snackbarMessage = if (willBeLiked) "Liked!" else "Like removed")
         }
         viewModelScope.launch {
             try {
-                reelsRepository.toggleLike(reelId, willBeLiked)
+                val ok = reelsRepository.setLiked(reelId, willBeLiked)
+                if (!ok) _state.update { it.copy(snackbarMessage = "Like action failed") }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Like action failed") }
             }
@@ -178,7 +184,9 @@ class ReelsListViewModel(
             try {
                 val res = userRepository.rewardReel(reelId)
                 _state.update { it.copy(snackbarMessage = res.message) }
-                userRepository.sync()
+            } catch (e: CancellationException) {
+                _state.update { it.copy(claimedRewardReelIds = it.claimedRewardReelIds - reelId) }
+                throw e
             } catch (e: Exception) {
                 _state.update { current ->
                     current.copy(
@@ -249,14 +257,16 @@ class ReelsListViewModel(
     }
 
     fun loadMore() {
-        val cursor = _state.value.nextCursor ?: return
-        if (_state.value.loadingMore || _state.value.loading) return
+        val current = _state.value
+        val cursor = current.nextCursor ?: return
+        if (current.loadingMore || current.loading || current.isRefreshing) return
+        val sort = currentSort()
 
-        viewModelScope.launch {
+        loadMoreJob = viewModelScope.launch {
             _state.update { it.copy(loadingMore = true, error = null) }
             try {
                 val response = reelsRepository.refreshReels(
-                    sort = currentSort(),
+                    sort = sort,
                     cursor = cursor,
                     append = true,
                 )
@@ -267,6 +277,8 @@ class ReelsListViewModel(
                         error = null,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
                     it.copy(

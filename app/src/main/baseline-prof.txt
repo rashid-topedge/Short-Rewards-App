@@ -1,0 +1,15 @@
+# Baseline profile: code AOT-compiled at install time so cold start doesn't run
+# it in the interpreter. Compose, Room, Ktor etc. ship their own profiles; these
+# rules add the app's start-up path (application, auth gate, first screens and
+# the data layer they call). ProfileInstaller applies it on sideloaded installs;
+# Play applies it automatically.
+HSPLcom/dramflix/android/DramaApp;->**(**)**
+HSPLcom/dramflix/android/MainActivity;->**(**)**
+HSPLcom/dramflix/android/navigation/**;->**(**)**
+HSPLcom/dramflix/android/data/**;->**(**)**
+HSPLcom/dramflix/android/ui/theme/**;->**(**)**
+HSPLcom/dramflix/android/ui/shell/**;->**(**)**
+HSPLcom/dramflix/android/ui/auth/**;->**(**)**
+HSPLcom/dramflix/android/ui/catalog/**;->**(**)**
+HSPLcom/dramflix/android/ui/components/**;->**(**)**
+Lcom/dramflix/android/**;

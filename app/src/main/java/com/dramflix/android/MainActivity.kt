@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
-import com.dramflix.android.navigation.DramaNavGraph
+import com.dramflix.android.navigation.AppRoot
 import com.dramflix.android.ui.theme.DramaFlixTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    DramaNavGraph()
+                    AppRoot()
                 }
             }
         }

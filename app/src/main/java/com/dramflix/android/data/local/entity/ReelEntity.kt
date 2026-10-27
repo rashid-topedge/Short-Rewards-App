@@ -3,6 +3,10 @@ package com.dramflix.android.data.local.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+/**
+ * Content for one reel, stored once. Which feeds it appears in, and where,
+ * lives in [ReelListEntryEntity].
+ */
 @Entity(tableName = "reels")
 data class ReelEntity(
     @PrimaryKey val reelId: Int,
@@ -21,6 +25,4 @@ data class ReelEntity(
     val createdAt: Long,
     val updatedAt: Long,
     val cachedAt: Long = System.currentTimeMillis(),
-    val sortTag: String = "newest",
-    val sortOrder: Int = 0,
 )

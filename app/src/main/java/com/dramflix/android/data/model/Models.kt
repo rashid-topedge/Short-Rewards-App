@@ -66,11 +66,12 @@ data class ReelListResponse(
 @Serializable
 data class CoinTransaction(
     val id: Int,
-    val userId: String,
-    val type: String,
-    val amount: Int,
-    val description: String,
-    val createdAt: Long,
+    /** Not included by GET /api/user/transactions. */
+    val userId: String = "",
+    val type: String = "",
+    val amount: Int = 0,
+    val description: String = "",
+    val createdAt: Long = 0,
 )
 
 @Serializable
@@ -83,33 +84,54 @@ data class StreakDayInfo(
 @Serializable
 data class UserProfile(
     val userId: String,
-    val coins: Int,
-    val streakDay: Int,
-    val lastCheckInDate: String?,
-    val canCheckInToday: Boolean,
-    val nextCheckInReward: Int,
-    val streakSchedule: List<StreakDayInfo>,
-    val transactions: List<CoinTransaction>,
+    val coins: Int = 0,
+    val streakDay: Int = 0,
+    val lastCheckInDate: String? = null,
+    val canCheckInToday: Boolean = false,
+    val nextCheckInReward: Int = 0,
+    val streakSchedule: List<StreakDayInfo> = emptyList(),
+    /** Empty when the response was requested with `?lite=1`. */
+    val transactions: List<CoinTransaction> = emptyList(),
+    /** True once the account is backed up with a Google account. */
+    val googleLinked: Boolean = false,
+    val googleEmail: String? = null,
 )
 
+/**
+ * Check-in response. Also decoded from 409 `ALREADY_CLAIMED` bodies, which
+ * carry `newCoinsBalance` / `user` too, so every field has a default.
+ */
 @Serializable
 data class CheckInResult(
-    val success: Boolean,
-    val message: String,
-    val coinsEarned: Int,
-    val newCoinsBalance: Int,
-    val streakDay: Int,
-    val isCycleReset: Boolean,
-    val user: UserProfile,
+    val success: Boolean = false,
+    val message: String = "",
+    val coinsEarned: Int = 0,
+    val newCoinsBalance: Int? = null,
+    val streakDay: Int = 0,
+    val isCycleReset: Boolean = false,
+    val user: UserProfile? = null,
+    /** Server already processed this claim ID and returned the original answer. */
+    val replayed: Boolean = false,
+    /** Set by the app: this reward had already been paid (e.g. on another device). */
+    val alreadyClaimed: Boolean = false,
+)
+
+/** Reward response (ad / episode / reel). Same tolerance as [CheckInResult]. */
+@Serializable
+data class RewardResult(
+    val success: Boolean = false,
+    val message: String = "",
+    val coinsEarned: Int = 0,
+    val newCoinsBalance: Int? = null,
+    val user: UserProfile? = null,
+    val replayed: Boolean = false,
+    val alreadyClaimed: Boolean = false,
 )
 
 @Serializable
-data class RewardResult(
-    val success: Boolean,
-    val message: String,
-    val coinsEarned: Int,
-    val newCoinsBalance: Int,
-    val user: UserProfile,
+data class TransactionsPage(
+    val items: List<CoinTransaction> = emptyList(),
+    val nextCursor: String? = null,
 )
 
 @Serializable

@@ -11,8 +11,10 @@ import com.dramflix.android.data.model.EpisodeItem
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.DramaRepository
 import com.dramflix.android.data.repo.UserRepository
-import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.util.NetworkMonitor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,12 +54,16 @@ class DetailViewModel(
 
     val scrollState = ScrollState(initial = 0)
 
+    private var loadJob: Job? = null
+
     init {
         load()
     }
 
+    /** Also used by the Retry button, so it replaces any previous load instead of stacking collectors. */
     fun load() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             // Observe cached detail from Room
             launch {
                 dramaRepository.observeDetail(dramaId).collect { detail ->
@@ -82,9 +88,14 @@ class DetailViewModel(
             launch {
                 _state.update { it.copy(isRefreshing = true, error = null) }
                 try {
-                    dramaRepository.refreshDetail(dramaId)
-                    dramaRepository.refreshEpisodes(dramaId)
+                    // Detail and episodes are independent: fetch in parallel.
+                    val detail = async { dramaRepository.refreshDetail(dramaId) }
+                    val episodes = async { dramaRepository.refreshEpisodes(dramaId) }
+                    detail.await()
+                    episodes.await()
                     _state.update { it.copy(isRefreshing = false, error = null) }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     _state.update {
                         it.copy(
@@ -149,7 +160,6 @@ class DetailViewModel(
             try {
                 val res = userRepository.rewardAd("REWARDED_VIDEO")
                 _state.update { it.copy(snackbarMessage = res.message) }
-                userRepository.sync()
             } catch (e: Exception) {
                 _state.update { it.copy(snackbarMessage = e.message ?: "Failed to claim ad reward") }
             }

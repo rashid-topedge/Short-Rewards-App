@@ -6,11 +6,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.dramflix.android.data.api.DramaApi
 import com.dramflix.android.data.model.CreateRedemptionRequest
 import com.dramflix.android.data.model.UserProfile
 import com.dramflix.android.data.repo.UserRepository
 import com.dramflix.android.data.util.NetworkMonitor
+import com.dramflix.android.data.api.ApiException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,8 @@ data class RedemptionFormUiState(
     val snackbarMessage: String? = null,
     val showRewardsDialog: Boolean = false,
     val showRewardAdDialog: Boolean = false,
+    /** Server requires a Google-linked account to redeem (403 GOOGLE_LINK_REQUIRED). */
+    val requiresGoogleLink: Boolean = false,
 )
 
 data class RedemptionFormSettings(
@@ -77,11 +80,11 @@ class RedemptionFormViewModel(
     }
 
     fun setAccountTitle(value: String) {
-        _state.update { it.copy(accountTitle = value) }
+        _state.update { it.copy(accountTitle = value, error = null) }
     }
 
     fun setAccountNumber(value: String) {
-        _state.update { it.copy(accountNumber = value) }
+        _state.update { it.copy(accountNumber = value, error = null) }
     }
 
     fun setPaymentMethod(value: String) {
@@ -89,7 +92,7 @@ class RedemptionFormViewModel(
     }
 
     fun setBankName(value: String) {
-        _state.update { it.copy(bankName = value) }
+        _state.update { it.copy(bankName = value, error = null) }
     }
 
     fun openRewardsDialog() {
@@ -137,7 +140,19 @@ class RedemptionFormViewModel(
         _state.update { it.copy(snackbarMessage = null) }
     }
 
+    fun showMessage(message: String) {
+        _state.update { it.copy(snackbarMessage = message) }
+    }
+
+    /** Linked: hide the prompt and refresh the profile; the user can submit again. */
+    fun onGoogleLinked() {
+        _state.update { it.copy(requiresGoogleLink = false) }
+        viewModelScope.launch { runCatching { userRepository.sync(force = true) } }
+    }
+
     fun submitRedemption() {
+        // Guard against double taps sending two redemption requests.
+        if (_state.value.loading || _state.value.submitted) return
         val amount = _state.value.coinsAmount.toIntOrNull() ?: 0
         val minVal = _settings.value?.minRedeemCoins ?: 500
         val coins = userProfile.value?.coins ?: 0
@@ -147,6 +162,18 @@ class RedemptionFormViewModel(
         }
         if (amount > coins) {
             _state.update { it.copy(coinsError = "Not enough coins") }
+            return
+        }
+        val form = _state.value
+        val missing = when {
+            form.accountTitle.isBlank() -> "Enter the account title"
+            form.accountNumber.isBlank() -> "Enter the account number"
+            form.paymentMethod.equals("Bank Transfer", ignoreCase = true) && form.bankName.isBlank() ->
+                "Enter the bank name"
+            else -> null
+        }
+        if (missing != null) {
+            _state.update { it.copy(error = missing) }
             return
         }
         viewModelScope.launch {
@@ -178,6 +205,22 @@ class RedemptionFormViewModel(
                             error = response.message ?: response.error ?: "Redemption request failed",
                         )
                     }
+                }
+            } catch (e: CancellationException) {
+                _state.update { it.copy(loading = false) }
+                throw e
+            } catch (e: ApiException) {
+                if (e.code == ApiException.GOOGLE_LINK_REQUIRED) {
+                    _state.update {
+                        it.copy(
+                            loading = false,
+                            requiresGoogleLink = true,
+                            error = null,
+                        )
+                    }
+                } else {
+                    // ApiException carries the server's own reason (e.g. "Insufficient coins").
+                    _state.update { it.copy(loading = false, error = e.message ?: "Server error") }
                 }
             } catch (e: Exception) {
                 _state.update {

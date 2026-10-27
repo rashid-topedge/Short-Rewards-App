@@ -13,5 +13,7 @@ data class UserProfileEntity(
     val nextCheckInReward: Int,
     val streakScheduleJson: String,
     val transactionsJson: String,
+    val googleLinked: Boolean = false,
+    val googleEmail: String? = null,
     val cachedAt: Long = System.currentTimeMillis(),
 )

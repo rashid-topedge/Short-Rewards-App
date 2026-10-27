@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dramflix.android.data.model.RedemptionRequest
 import com.dramflix.android.data.model.SystemSettingsDto
 import com.dramflix.android.data.model.UserProfile
+import com.dramflix.android.ui.auth.AccountSecurityCard
 import com.dramflix.android.ui.components.CoinTopPill
 import com.dramflix.android.ui.components.RewardsCenterDialog
 import com.dramflix.android.ui.components.RewardAdDialog
@@ -192,7 +193,11 @@ fun SettingsScreen(
                                 color = TextPrimaryDark,
                             )
                             Text(
-                                text = user?.userId ?: "Unknown",
+                                text = when {
+                                    user == null -> "Loading…"
+                                    user?.googleLinked == true -> user?.googleEmail ?: "Google account"
+                                    else -> "Guest account"
+                                },
                                 color = TextSecondaryDark,
                                 fontSize = 13.sp,
                             )
@@ -304,6 +309,14 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            // Sign-in / backup status
+            AccountSecurityCard(
+                user = user,
+                onMessage = viewModel::showMessage,
+                onLinked = viewModel::onGoogleLinked,
+                onSignOut = viewModel::signOut,
+            )
 
             // Rewards quick actions
             Surface(
